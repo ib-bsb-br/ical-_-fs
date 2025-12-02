@@ -19,14 +19,15 @@
 struct agenda_entry *
 copy_agenda_entry(const struct agenda_entry *src)
 {
-	// Root node
-	if (!src) {
-		return NULL;
-	}
-	struct agenda_entry *copy = xmalloc(sizeof(struct agenda_entry));
-	copy->filename = xstrdup(src->filename);
-	copy->filename_vdir = xstrdup(src->filename_vdir);
-	return copy;
+        // Root node
+        if (!src) {
+                return NULL;
+        }
+        struct agenda_entry *copy = xmalloc(sizeof(struct agenda_entry));
+        copy->filename = xstrdup(src->filename);
+        copy->filename_vdir = xstrdup(src->filename_vdir);
+        copy->type = src->type;
+        return copy;
 }
 
 void
@@ -44,10 +45,11 @@ free_agenda_entry(struct agenda_entry *entry)
 
 struct agenda_entry *
 create_agenda_entry(arena *ar, const char *filename,
-		    const char *filename_vdir)
+                    const char *filename_vdir, enum EntryType type)
 {
-	struct agenda_entry *copy = rmalloc(ar, sizeof(struct agenda_entry));
-	copy->filename = rstrdup(ar, filename);
-	copy->filename_vdir = rstrdup(ar, filename_vdir);
-	return copy;
+        struct agenda_entry *copy = rmalloc(ar, sizeof(struct agenda_entry));
+        copy->filename = rstrdup(ar, filename);
+        copy->filename_vdir = rstrdup(ar, filename_vdir);
+        copy->type = type;
+        return copy;
 }

@@ -117,6 +117,36 @@ set_dtstart(arena *ar, const char *dtstart_c,
 
 int
 clear_dtstart(arena *ar, struct tree_node *node);
+const char *
+get_node_due(arena *ar, const struct tree_node *node);
+
+int
+set_node_due(arena *ar, const char *due_c, const struct tree_node *node);
+
+int
+clear_node_due(arena *ar, const struct tree_node *node);
+
+int
+set_node_priority(arena *ar, const struct tree_node *node, int priority);
+
+int
+get_node_priority(arena *ar, const struct tree_node *node);
+
+int
+get_node_percentcomplete(arena *ar, const struct tree_node *node);
+
+int
+set_node_percentcomplete(arena *ar, const struct tree_node *node,
+                        int percent);
+
+const char *
+get_node_assignee(arena *ar, const struct tree_node *node);
+
+int
+set_node_assignee(arena *ar, const struct tree_node *node, const char *value);
+
+char *
+get_node_links(arena *ar, const struct tree_node *node);
 int
 create_directory_from_fuse_path(arena *ar, const char *fuse_path);
 

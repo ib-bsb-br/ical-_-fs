@@ -21,13 +21,20 @@
 #include <uuid/uuid.h>
 #include <wordexp.h>
 
+enum EntryType {
+        TYPE_JOURNAL,
+        TYPE_TASK,
+        TYPE_NOTE,
+};
+
 struct agenda_entry {
-	// filename is full path relative to fuse directory
-	// I.E. hello world
-	char *filename;
-	// filename_original is the relative path to ICS_DIR
-	// I.E. 910319208nrao19p.ics
-	char *filename_vdir;
+        // filename is full path relative to fuse directory
+        // I.E. hello world
+        char *filename;
+        // filename_original is the relative path to ICS_DIR
+        // I.E. 910319208nrao19p.ics
+        char *filename_vdir;
+        enum EntryType type;
 };
 
 struct agenda_entry *
@@ -38,6 +45,6 @@ free_agenda_entry(struct agenda_entry *entry);
 
 struct agenda_entry *
 create_agenda_entry(arena *ar, const char *filename,
-		    const char *filename_vdir);
+                    const char *filename_vdir, enum EntryType type);
 #endif // agenda_entry_h_INCLUDED
 
