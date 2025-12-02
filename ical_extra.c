@@ -68,14 +68,26 @@ parse_ical_class(const char *input)
 const icalproperty_status
 parse_ical_status(const char *input)
 {
-	// FIXME should check if VJOURNAL, VEVENT or VTODO
-	if (strcmp(input, "draft") == 0) {
-		return ICAL_STATUS_DRAFT;
-	}
-	else if (strcmp(input, "final") == 0) {
-		return ICAL_STATUS_FINAL;
-	}
-	return ICAL_STATUS_FINAL;
+        if (strcasecmp(input, "draft") == 0) {
+                return ICAL_STATUS_DRAFT;
+        }
+        else if (strcasecmp(input, "final") == 0) {
+                return ICAL_STATUS_FINAL;
+        }
+        else if (strcasecmp(input, "completed") == 0) {
+                return ICAL_STATUS_COMPLETED;
+        }
+        else if (strcasecmp(input, "cancelled") == 0) {
+                return ICAL_STATUS_CANCELLED;
+        }
+        else if (strcasecmp(input, "needs-action") == 0) {
+                return ICAL_STATUS_NEEDSACTION;
+        }
+        else if (strcasecmp(input, "in-process") == 0) {
+                return ICAL_STATUS_INPROCESS;
+        }
+
+        return ICAL_STATUS_NONE;
 }
 
 const char *
@@ -96,35 +108,49 @@ format_ical_class(const enum icalproperty_class iclass)
 const char *
 format_ical_status(const enum icalproperty_status istatus)
 {
-	if (istatus == ICAL_STATUS_DRAFT) {
-		return "draft";
-	}
-	else if (istatus == ICAL_STATUS_FINAL) {
-		return "final";
-	}
-	return NULL;
+        if (istatus == ICAL_STATUS_DRAFT) {
+                return "DRAFT";
+        }
+        else if (istatus == ICAL_STATUS_FINAL) {
+                return "FINAL";
+        }
+        else if (istatus == ICAL_STATUS_COMPLETED) {
+                return "COMPLETED";
+        }
+        else if (istatus == ICAL_STATUS_CANCELLED) {
+                return "CANCELLED";
+        }
+        else if (istatus == ICAL_STATUS_NEEDSACTION) {
+                return "NEEDS-ACTION";
+        }
+        else if (istatus == ICAL_STATUS_INPROCESS) {
+                return "IN-PROCESS";
+        }
+        return NULL;
 }
 
 bool
 is_directory_component(icalcomponent *component)
 {
-	icalcomponent *journal = icalcomponent_get_first_component(
-	    component, ICAL_VJOURNAL_COMPONENT);
+        icalcomponent *inner =
+            icalcomponent_get_first_component(component, ICAL_ANY_COMPONENT);
 
-	for (icalproperty *prop = icalcomponent_get_first_property(
-		 journal, ICAL_RELATEDTO_PROPERTY);
-	     prop != NULL; prop = icalcomponent_get_next_property(
-			       journal, ICAL_RELATEDTO_PROPERTY)) {
+        if (inner) {
+                for (icalproperty *prop = icalcomponent_get_first_property(
+                         inner, ICAL_RELATEDTO_PROPERTY);
+                     prop != NULL; prop = icalcomponent_get_next_property(
+                                       inner, ICAL_RELATEDTO_PROPERTY)) {
 
-		const char *reltype =
-		    icalproperty_get_parameter_as_string(prop, "RELTYPE");
-		if (reltype && strcasecmp(reltype, "CHILD") == 0) {
-			return true;
-		}
-	}
-	const char *is_directory =
-	    icalcomponent_get_uniq_x_value(component, IS_DIRECTORY_PROPERTY);
-	return is_directory && strcmp(is_directory, "YES") == 0;
+                        const char *reltype = icalproperty_get_parameter_as_string(
+                            prop, "RELTYPE");
+                        if (reltype && strcasecmp(reltype, "CHILD") == 0) {
+                                return true;
+                        }
+                }
+        }
+        const char *is_directory =
+            icalcomponent_get_uniq_x_value(component, IS_DIRECTORY_PROPERTY);
+        return is_directory && strcmp(is_directory, "YES") == 0;
 }
 
 icalcomponent *

@@ -375,14 +375,31 @@ fuse_removexattr(const char *path, const char *attribute)
 		goto cleanup_return;
 	}
 
-	if (strcmp(attribute, "user.categories") == 0) {
-		status = set_node_categories(ar, node, "", 0);
-		goto cleanup_return;
-	}
-	else if (strcmp(attribute, "user.class") == 0) {
-		status = delete_node_class(ar, node);
-		goto cleanup_return;
-	}
+        if (strcmp(attribute, "user.categories") == 0) {
+                status = set_node_categories(ar, node, "", 0);
+                goto cleanup_return;
+        }
+        else if (strcmp(attribute, "user.class") == 0) {
+                status = delete_node_class(ar, node);
+                goto cleanup_return;
+        }
+
+        else if (strcmp(attribute, "user.due") == 0) {
+                status = clear_node_due(ar, node);
+                goto cleanup_return;
+        }
+        else if (strcmp(attribute, "user.priority") == 0) {
+                status = set_node_priority(ar, node, 0);
+                goto cleanup_return;
+        }
+        else if (strcmp(attribute, "user.percent") == 0) {
+                status = set_node_percentcomplete(ar, node, 0);
+                goto cleanup_return;
+        }
+        else if (strcmp(attribute, "user.assignee") == 0) {
+                status = set_node_assignee(ar, node, "");
+                goto cleanup_return;
+        }
 
 	// It should probably always be set
 	else if (strcmp(attribute, "user.status") == 0) {
@@ -443,16 +460,20 @@ fuse_setxattr(const char *path, const char *attribute, const char *value,
 		goto cleanup_return;
 	}
 
-	// user.sibling is reserved but not implemented
-	else if (strcmp(attribute, "user.sibling") == 0) {
-		status = -EPERM;
-		goto cleanup_return;
-	}
+        // user.sibling is reserved but not implemented
+        else if (strcmp(attribute, "user.sibling") == 0) {
+                status = -EPERM;
+                goto cleanup_return;
+        }
+        else if (strcmp(attribute, "user.links") == 0) {
+                status = -EPERM;
+                goto cleanup_return;
+        }
 
-	else if (strcmp(attribute, "user.dtstart") == 0) {
-		if (strcmp(value, "") == 0) {
-			status = clear_dtstart(ar, node);
-		}
+        else if (strcmp(attribute, "user.dtstart") == 0) {
+                if (strcmp(value, "") == 0) {
+                        status = clear_dtstart(ar, node);
+                }
 		else {
 			status = set_dtstart(ar, value, node);
 		}
@@ -488,14 +509,30 @@ fuse_setxattr(const char *path, const char *attribute, const char *value,
 			goto cleanup_return;
 		}
 
-		status = set_node_status(ar, node, istatus);
-		goto cleanup_return;
-	}
-	else if (starts_with_str(attribute, "user.")) {
-		icalcomponent *ic = get_icalcomponent_from_node(ar, node);
+                status = set_node_status(ar, node, istatus);
+                goto cleanup_return;
+        }
+        else if (strcmp(attribute, "user.due") == 0) {
+                status = set_node_due(ar, value, node);
+                goto cleanup_return;
+        }
+        else if (strcmp(attribute, "user.priority") == 0) {
+                status = set_node_priority(ar, node, atoi(value));
+                goto cleanup_return;
+        }
+        else if (strcmp(attribute, "user.percent") == 0) {
+                status = set_node_percentcomplete(ar, node, atoi(value));
+                goto cleanup_return;
+        }
+        else if (strcmp(attribute, "user.assignee") == 0) {
+                status = set_node_assignee(ar, node, value);
+                goto cleanup_return;
+        }
+        else if (starts_with_str(attribute, "user.")) {
+                icalcomponent *ic = get_icalcomponent_from_node(ar, node);
 
-		const char *rkey = attribute + 5;
-		LOG("Updating %s", rkey);
+                const char *rkey = attribute + 5;
+                LOG("Updating %s", rkey);
 
 		icalcomponent_set_custom_x_value(ar, ic, rkey, value);
 		status = write_ical_file(ar, node, ic);
@@ -547,15 +584,20 @@ fuse_listxattr(const char *path, char *list, size_t size)
 		fputc('\0', stream);
 	}
 
-	const char *dtstart = get_dtstart(ar, node);
-	if (dtstart != NULL) {
-		fprintf(stream, "user.dtstart");
-		fputc('\0', stream);
-	}
+        const char *dtstart = get_dtstart(ar, node);
+        if (dtstart != NULL) {
+                fprintf(stream, "user.dtstart");
+                fputc('\0', stream);
+        }
+        const char *due = get_node_due(ar, node);
+        if (due != NULL) {
+                fprintf(stream, "user.due");
+                fputc('\0', stream);
+        }
 
-	// All notes have a uid
-	fprintf(stream, "user.uid");
-	fputc('\0', stream);
+        // All notes have a uid
+        fprintf(stream, "user.uid");
+        fputc('\0', stream);
 
 	LOG("Checking node class");
 	const char *iclass = get_node_class(ar, node);
@@ -566,12 +608,36 @@ fuse_listxattr(const char *path, char *list, size_t size)
 
 	LOG("Checking node status");
 	const char *istatus = get_node_status(ar, node);
-	if (istatus != NULL && strcmp("", istatus) != 0) {
-		fprintf(stream, "user.status");
-		fputc('\0', stream);
-	}
+        if (istatus != NULL && strcmp("", istatus) != 0) {
+                fprintf(stream, "user.status");
+                fputc('\0', stream);
+        }
 
-	icalcomponent_print_x_props(stream, comp);
+        int priority = get_node_priority(ar, node);
+        if (priority >= 0) {
+                fprintf(stream, "user.priority");
+                fputc('\0', stream);
+        }
+
+        int percent = get_node_percentcomplete(ar, node);
+        if (percent >= 0) {
+                fprintf(stream, "user.percent");
+                fputc('\0', stream);
+        }
+
+        const char *assignee = get_node_assignee(ar, node);
+        if (assignee && strcmp("", assignee) != 0) {
+                fprintf(stream, "user.assignee");
+                fputc('\0', stream);
+        }
+
+        char *links = get_node_links(ar, node);
+        if (links && strcmp("", links) != 0) {
+                fprintf(stream, "user.links");
+                fputc('\0', stream);
+        }
+
+        icalcomponent_print_x_props(stream, comp);
 
 	if (fclose(stream) != 0) {
 		status = -EIO;
@@ -674,12 +740,12 @@ fuse_getxattr(const char *path, const char *attribute, char *buf, size_t s)
 		status = string_len;
 		goto cleanup_return;
 	}
-	else if (strcmp(attribute, "user.dtstart") == 0) {
-		const char *res = get_dtstart(ar, node);
-		if (!res) {
-			status = -ENODATA;
-			goto cleanup_return;
-		}
+        else if (strcmp(attribute, "user.dtstart") == 0) {
+                const char *res = get_dtstart(ar, node);
+                if (!res) {
+                        status = -ENODATA;
+                        goto cleanup_return;
+                }
 
 		int string_len = strlen(res);
 
@@ -689,13 +755,82 @@ fuse_getxattr(const char *path, const char *attribute, char *buf, size_t s)
 			snprintf(buf, s, "%s", res);
 		}
 
-		status = string_len;
-		goto cleanup_return;
-	}
-	else if (starts_with_str(attribute, "user.")) {
-		icalcomponent *ic = get_icalcomponent_from_node(ar, node);
+                status = string_len;
+                goto cleanup_return;
+        }
+        else if (strcmp(attribute, "user.due") == 0) {
+                const char *res = get_node_due(ar, node);
+                if (!res) {
+                        status = -ENODATA;
+                        goto cleanup_return;
+                }
 
-		const char *key = attribute + 5;
+                int string_len = strlen(res);
+                if (s > 0) {
+                        snprintf(buf, s, "%s", res);
+                }
+                status = string_len;
+                goto cleanup_return;
+        }
+        else if (strcmp(attribute, "user.priority") == 0) {
+                int priority = get_node_priority(ar, node);
+                if (priority < 0) {
+                        status = -ENODATA;
+                        goto cleanup_return;
+                }
+
+                if (s > 0) {
+                        snprintf(buf, s, "%d", priority);
+                }
+                status = snprintf(NULL, 0, "%d", priority);
+                goto cleanup_return;
+        }
+        else if (strcmp(attribute, "user.percent") == 0) {
+                int percent = get_node_percentcomplete(ar, node);
+                if (percent < 0) {
+                        status = -ENODATA;
+                        goto cleanup_return;
+                }
+
+                if (s > 0) {
+                        snprintf(buf, s, "%d", percent);
+                }
+                status = snprintf(NULL, 0, "%d", percent);
+                goto cleanup_return;
+        }
+        else if (strcmp(attribute, "user.assignee") == 0) {
+                const char *assignee = get_node_assignee(ar, node);
+                if (!assignee || *assignee == '\0') {
+                        status = -ENODATA;
+                        goto cleanup_return;
+                }
+
+                int string_len = strlen(assignee);
+                if (s > 0) {
+                        snprintf(buf, s, "%s", assignee);
+                }
+
+                status = string_len;
+                goto cleanup_return;
+        }
+        else if (strcmp(attribute, "user.links") == 0) {
+                char *links = get_node_links(ar, node);
+                if (!links || *links == '\0') {
+                        status = -ENODATA;
+                        goto cleanup_return;
+                }
+
+                int string_len = strlen(links);
+                if (s > 0) {
+                        snprintf(buf, s, "%s", links);
+                }
+                status = string_len;
+                goto cleanup_return;
+        }
+        else if (starts_with_str(attribute, "user.")) {
+                icalcomponent *ic = get_icalcomponent_from_node(ar, node);
+
+                const char *key = attribute + 5;
 		const char *value =
 		    icalcomponent_get_custom_x_value(ar, ic, key);
 		if (!value) {

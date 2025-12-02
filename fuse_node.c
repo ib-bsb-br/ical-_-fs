@@ -183,19 +183,30 @@ parse_ics_to_agenda_entry(arena *ar, const char *vdir_filepath)
 		LOG("No component");
 		return NULL;
 	}
-	icalcomponent *journal =
-	    icalcomponent_get_first_real_component(component);
+        icalcomponent *inner =
+            icalcomponent_get_first_real_component(component);
 
-	if (journal == NULL ||
-	    icalcomponent_isa(journal) != ICAL_VJOURNAL_COMPONENT) {
-		LOG("Not journal component");
-		return NULL;
-	}
-	const char *summary = icalcomponent_get_summary(component);
-	if (summary == NULL) {
-		LOG("No summary found");
-		return NULL;
-	}
+        if (inner == NULL) {
+                LOG("No inner component");
+                return NULL;
+        }
+        enum EntryType type = TYPE_NOTE;
+        switch (icalcomponent_isa(inner)) {
+        case ICAL_VJOURNAL_COMPONENT:
+                type = TYPE_JOURNAL;
+                break;
+        case ICAL_VTODO_COMPONENT:
+                type = TYPE_TASK;
+                break;
+        default:
+                LOG("Unsupported component type");
+                return NULL;
+        }
+        const char *summary = icalcomponent_get_summary(component);
+        if (summary == NULL) {
+                LOG("No summary found");
+                return NULL;
+        }
 
 	char *filename = NULL;
 	if (is_directory_component(component)) {
@@ -218,8 +229,8 @@ parse_ics_to_agenda_entry(arena *ar, const char *vdir_filepath)
 		}
 	}
 
-	struct agenda_entry *e =
-	    create_agenda_entry(ar, filename, get_filename(vdir_filepath));
+        struct agenda_entry *e = create_agenda_entry(
+            ar, filename, get_filename(vdir_filepath), type);
 
 	return e;
 }
@@ -366,7 +377,7 @@ get_dtstart(arena *ar, struct tree_node *n)
 int
 clear_dtstart(arena *ar, struct tree_node *node)
 {
-	icalcomponent *comp = get_icalcomponent_from_node(ar, node);
+        icalcomponent *comp = get_icalcomponent_from_node(ar, node);
 
 	icalproperty *p =
 	    icalcomponent_get_first_property(comp, ICAL_DTSTART_PROPERTY);
@@ -375,7 +386,283 @@ clear_dtstart(arena *ar, struct tree_node *node)
 		icalcomponent_remove_property(comp, p);
 	}
 
-	return write_ical_file(ar, node, comp);
+        return write_ical_file(ar, node, comp);
+}
+
+int
+clear_node_due(arena *ar, const struct tree_node *node)
+{
+        icalcomponent *comp = get_icalcomponent_from_node(ar, node);
+
+        icalproperty *p =
+            icalcomponent_get_first_property(comp, ICAL_DUE_PROPERTY);
+
+        if (p) {
+                icalcomponent_remove_property(comp, p);
+        }
+
+        return write_ical_file(ar, node, comp);
+}
+
+int
+set_node_due(arena *ar, const char *due_c, const struct tree_node *node)
+{
+        if (strcmp(due_c, "") == 0) {
+                return clear_node_due(ar, node);
+        }
+
+        struct icaltimetype due = icaltime_from_string(due_c);
+        if (icaltime_compare(due, icaltime_null_time()) == 0) {
+                return -EINVAL;
+        }
+
+        icalcomponent *comp = get_icalcomponent_from_node(ar, node);
+
+        icalcomponent_set_due(comp, due);
+
+        return write_ical_file(ar, node, comp);
+}
+
+const char *
+get_node_due(arena *ar, const struct tree_node *node)
+{
+
+        icalcomponent *comp = get_icalcomponent_from_node(ar, node);
+
+        struct icaltimetype due = icalcomponent_get_due(comp);
+        if (icaltime_compare(due, icaltime_null_time()) == 0) {
+                return NULL;
+        }
+
+        const char *time = icaltime_as_ical_string(due);
+        return time;
+}
+
+int
+set_node_priority(arena *ar, const struct tree_node *node, int priority)
+{
+        if (priority < 0 || priority > 9) {
+                return -EINVAL;
+        }
+
+        icalcomponent *component = get_icalcomponent_from_node(ar, node);
+        if (!component) {
+                return -EINVAL;
+        }
+
+        icalcomponent *inner = icalcomponent_get_inner(component);
+        icalproperty *priority_prop =
+            icalcomponent_get_first_property(inner, ICAL_PRIORITY_PROPERTY);
+
+        if (!priority_prop && priority == 0) {
+                return 0;
+        }
+
+        if (!priority_prop) {
+                priority_prop = icalproperty_new_priority(priority);
+                icalcomponent_add_property(inner, priority_prop);
+        }
+        else if (priority == 0) {
+                icalcomponent_remove_property(inner, priority_prop);
+                icalproperty_free(priority_prop);
+        }
+        else {
+                icalproperty_set_priority(priority_prop, priority);
+        }
+
+        return write_ical_file(ar, node, component);
+}
+
+int
+get_node_priority(arena *ar, const struct tree_node *node)
+{
+
+        icalcomponent *component = get_icalcomponent_from_node(ar, node);
+        if (!component) {
+                return -EINVAL;
+        }
+
+        icalcomponent *inner = icalcomponent_get_inner(component);
+
+        icalproperty *priority_prop =
+            icalcomponent_get_first_property(inner, ICAL_PRIORITY_PROPERTY);
+
+        if (!priority_prop) {
+                return -1;
+        }
+
+        return icalproperty_get_priority(priority_prop);
+}
+
+int
+get_node_percentcomplete(arena *ar, const struct tree_node *node)
+{
+
+        icalcomponent *component = get_icalcomponent_from_node(ar, node);
+        if (!component) {
+                return -EINVAL;
+        }
+
+        icalcomponent *inner = icalcomponent_get_inner(component);
+
+        icalproperty *prop = icalcomponent_get_first_property(
+            inner, ICAL_PERCENTCOMPLETE_PROPERTY);
+
+        if (!prop) {
+                return -1;
+        }
+
+        return icalproperty_get_percentcomplete(prop);
+}
+
+int
+set_node_percentcomplete(arena *ar, const struct tree_node *node, int percent)
+{
+        if (percent < 0 || percent > 100) {
+                return -EINVAL;
+        }
+
+        icalcomponent *component = get_icalcomponent_from_node(ar, node);
+        if (!component) {
+                return -EINVAL;
+        }
+
+        icalcomponent *inner = icalcomponent_get_inner(component);
+
+        icalproperty *prop = icalcomponent_get_first_property(
+            inner, ICAL_PERCENTCOMPLETE_PROPERTY);
+
+        if (prop) {
+                icalproperty_set_percentcomplete(prop, percent);
+        }
+        else if (percent > 0) {
+                icalcomponent_add_property(
+                    inner, icalproperty_new_percentcomplete(percent));
+        }
+
+        if (percent == 0 && prop) {
+                icalcomponent_remove_property(inner, prop);
+                icalproperty_free(prop);
+        }
+
+        if (percent == 100) {
+                set_node_status(ar, node, ICAL_STATUS_COMPLETED);
+        }
+
+        return write_ical_file(ar, node, component);
+}
+
+const char *
+get_node_assignee(arena *ar, const struct tree_node *node)
+{
+        icalcomponent *component = get_icalcomponent_from_node(ar, node);
+        if (!component) {
+                return NULL;
+        }
+
+        icalcomponent *inner = icalcomponent_get_inner(component);
+        icalproperty *attendee_prop = icalcomponent_get_first_property(
+            inner, ICAL_ATTENDEE_PROPERTY);
+
+        if (!attendee_prop) {
+                return NULL;
+        }
+
+        return icalproperty_get_attendee(attendee_prop);
+}
+
+int
+set_node_assignee(arena *ar, const struct tree_node *node, const char *value)
+{
+        icalcomponent *component = get_icalcomponent_from_node(ar, node);
+        if (!component) {
+                return -EINVAL;
+        }
+
+        icalcomponent *inner = icalcomponent_get_inner(component);
+        icalproperty *attendee_prop = icalcomponent_get_first_property(
+            inner, ICAL_ATTENDEE_PROPERTY);
+
+        if (strcmp(value, "") == 0) {
+                if (attendee_prop) {
+                        icalcomponent_remove_property(inner, attendee_prop);
+                        icalproperty_free(attendee_prop);
+                        return write_ical_file(ar, node, component);
+                }
+                return 0;
+        }
+
+        icalparameter *role_param =
+            icalparameter_new_role(ICAL_ROLE_REQPARTICIPANT);
+
+        if (!attendee_prop) {
+                attendee_prop = icalproperty_new_attendee(value);
+                icalcomponent_add_property(inner, attendee_prop);
+        }
+        else {
+                icalproperty_set_attendee(attendee_prop, value);
+        }
+
+        for (icalparameter *param = icalproperty_get_first_parameter(
+                 attendee_prop, ICAL_ROLE_PARAMETER);
+             param != NULL;) {
+                icalparameter *next_param = icalproperty_get_next_parameter(
+                    attendee_prop, ICAL_ROLE_PARAMETER);
+                icalproperty_remove_parameter(attendee_prop, param);
+                icalparameter_free(param);
+                param = next_param;
+        }
+
+        icalproperty_add_parameter(attendee_prop, role_param);
+
+        return write_ical_file(ar, node, component);
+}
+
+char *
+get_node_links(arena *ar, const struct tree_node *node)
+{
+        icalcomponent *component = get_icalcomponent_from_node(ar, node);
+        if (!component) {
+                return NULL;
+        }
+
+        icalcomponent *inner = icalcomponent_get_inner(component);
+        char *links = NULL;
+
+        for (icalproperty *prop = icalcomponent_get_first_property(
+                 inner, ICAL_RELATEDTO_PROPERTY);
+             prop != NULL;
+             prop = icalcomponent_get_next_property(inner, ICAL_RELATEDTO_PROPERTY)) {
+
+                const char *reltype =
+                    icalproperty_get_parameter_as_string(prop, "RELTYPE");
+                if (reltype && strcasecmp(reltype, "PARENT") == 0) {
+                        continue;
+                }
+
+                const char *related_uid = icalproperty_get_relatedto(prop);
+                if (!related_uid) {
+                        continue;
+                }
+
+                const char *label = related_uid;
+                struct tree_node *related_node =
+                    get_node_by_uuid(ar, related_uid);
+                if (related_node) {
+                        label = get_node_filename(related_node);
+                }
+
+                if (!links) {
+                        links = rstrdup(ar, label);
+                }
+                else {
+                        char *combined = NULL;
+                        rasprintf(ar, &combined, "%s,%s", links, label);
+                        links = combined;
+                }
+        }
+
+        return links;
 }
 
 static int
@@ -697,8 +984,8 @@ create_entry_from_fuse(arena *ar, const char *fuse_path, enum ENTRY_TYPE etype)
 	rasprintf(ar, &new_filname_vdir, "%s.ics",
 		  icalcomponent_get_uid(new_component));
 
-	struct agenda_entry *new_entry =
-	    create_agenda_entry(ar, new_filename, new_filname_vdir);
+        struct agenda_entry *new_entry = create_agenda_entry(
+            ar, new_filename, new_filname_vdir, TYPE_JOURNAL);
 
 	LOG("Inserting vjournal directory");
 
